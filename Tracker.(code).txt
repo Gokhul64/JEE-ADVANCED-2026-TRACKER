@@ -1,0 +1,659 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// --- Hierarchical Syllabus Data ---
+const SYLLABUS_DATA = {
+  Physics: {
+    "Mechanics": ["Units & Dimensions", "Kinematics", "Laws of Motion", "Work, Energy & Power", "Centre of Mass", "Collisions", "Rotational Mechanics", "Gravitation", "Mechanical Properties of Solids", "Fluid Mechanics", "Viscosity", "Surface Tension"],
+    "Thermal Physics": ["Thermal Expansion", "Calorimetry", "Kinetic Theory of Gases", "Thermodynamics (P)"],
+    "Oscillations & Waves": ["SHM", "String Waves", "Sound"],
+    "Electricity & Magnetism": ["Electrostatics", "Capacitors", "Current Electricity", "Magnetism", "Electromagnetic Induction", "Alternating Current", "Electromagnetic Waves"],
+    "Optics": ["Ray Optics", "Wave Optics"],
+    "Modern Physics": ["Atomic Physics", "Nuclear Physics", "Semiconductor Electronics"]
+  },
+  Chemistry: {
+    "Physical Chemistry": ["Mole Concept", "Atomic Structure", "Chemical Bonding", "States of Matter", "Thermodynamics (C)", "Chemical Equilibrium", "Ionic Equilibrium", "Redox Reactions", "Electrochemistry", "Chemical Kinetics", "Solutions", "Solid State", "Surface Chemistry"],
+    "Inorganic Chemistry": ["Periodicity", "Hydrogen", "s-Block", "Group 13", "Group 14", "Group 15", "Group 16", "Group 17", "Group 18", "d-Block", "f-Block", "Coordination Compounds", "Metallurgy", "Qualitative Analysis"],
+    "Organic Chemistry": ["General Organic Chemistry", "Isomerism", "Alkanes", "Alkenes", "Alkynes", "Aromatic Hydrocarbons", "Haloalkanes", "Alcohols", "Phenols", "Ethers", "Aldehydes", "Ketones", "Carboxylic Acids", "Carboxylic Acid Derivatives", "Amines", "Biomolecules", "Polymers", "Practical Organic Chemistry"]
+  },
+  Mathematics: {
+    "Algebra": ["Sets", "Relations & Functions", "Complex Numbers", "Quadratic Equations", "Sequences & Series", "Binomial Theorem", "Permutations & Combinations", "Probability", "Matrices", "Determinants"],
+    "Trigonometry": ["Trigonometric Ratios", "Trigonometric Equations", "Inverse Trigonometric Functions"],
+    "Coordinate Geometry": ["Straight Lines", "Circles", "Parabola", "Ellipse", "Hyperbola"],
+    "Calculus": ["Limits", "Continuity", "Differentiability", "Differentiation", "Applications of Derivatives", "Integration", "Differential Equations", "Area Under Curve"],
+    "Vector Geometry": ["Vectors", "Three Dimensional Geometry"]
+  }
+};
+
+const MASTERY_TYPES = { L: 'Learn', S: 'Shortnotes', Q: 'Questions', T: 'Tests' };
+
+// --- Animation Configs ---
+const springTransition = { type: "spring", stiffness: 300, damping: 30 };
+const fadeInVariants = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -10 }
+};
+
+export default function App() {
+  const [view, setView] = useState('dashboard');
+  const [activeSubject, setActiveSubject] = useState('Physics');
+  const [modalSubject, setModalSubject] = useState('Physics');
+  const [expandedCategories, setExpandedCategories] = useState({});
+  const [modalExpandedCategories, setModalExpandedCategories] = useState({});
+  const [showMasteryStats, setShowMasteryStats] = useState(false);
+  
+  // Persistence Initialization
+  const [progress, setProgress] = useState(() => JSON.parse(localStorage.getItem('jee2026_progress') || '{}'));
+  const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('jee2026_tasks') || '{}'));
+  const [studyHours, setStudyHours] = useState(() => JSON.parse(localStorage.getItem('jee2026_hours') || '{}'));
+  const [dailyTarget, setDailyTarget] = useState(() => Number(localStorage.getItem('jee2026_target') || 8));
+  const [wakeUpTimes, setWakeUpTimes] = useState(() => JSON.parse(localStorage.getItem('jee2026_wakeup') || '{}'));
+
+  // Local state for UI selection
+  const [selectedHour, setSelectedHour] = useState(null);
+  const [selectedMinute, setSelectedMinute] = useState(null);
+
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [now, setNow] = useState(new Date());
+
+  const todayKey = now.toISOString().split('T')[0];
+  const targetDate = useMemo(() => new Date('2026-05-17T09:00:00'), []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Automatic Saving
+  useEffect(() => {
+    localStorage.setItem('jee2026_progress', JSON.stringify(progress));
+    localStorage.setItem('jee2026_tasks', JSON.stringify(tasks));
+    localStorage.setItem('jee2026_hours', JSON.stringify(studyHours));
+    localStorage.setItem('jee2026_target', dailyTarget.toString());
+    localStorage.setItem('jee2026_wakeup', JSON.stringify(wakeUpTimes));
+  }, [progress, tasks, studyHours, dailyTarget, wakeUpTimes]);
+
+  const timeLeft = useMemo(() => {
+    const diff = targetDate - now;
+    if (diff <= 0) return { weeks: 0, days: 0, hours: 0 };
+    return {
+      weeks: Math.floor(diff / (1000 * 60 * 60 * 24 * 7)),
+      days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+      hours: Math.floor(diff / (1000 * 60 * 60))
+    };
+  }, [now, targetDate]);
+
+  const stats = useMemo(() => {
+    const data = { Physics: {}, Chemistry: {}, Mathematics: {}, overall: 0 };
+    let totalPossible = 0;
+    let totalEarned = 0;
+
+    Object.entries(SYLLABUS_DATA).forEach(([subj, cats]) => {
+      let subjPossible = 0;
+      let subjEarned = 0;
+      const typeBreakdown = { L: 0, S: 0, Q: 0, T: 0, total: 0 };
+
+      Object.values(cats).forEach(chapters => {
+        chapters.forEach(chap => {
+          ['L', 'S', 'Q', 'T'].forEach(type => {
+            subjPossible++;
+            totalPossible++;
+            if (progress[`${chap}-${type}`]) {
+              subjEarned++;
+              totalEarned++;
+              typeBreakdown[type]++;
+            }
+          });
+        });
+      });
+      data[subj] = { earned: subjEarned, total: subjPossible, types: typeBreakdown };
+    });
+
+    data.overall = Math.round((totalEarned / totalPossible) * 100) || 0;
+    return data;
+  }, [progress]);
+
+  function chaptersCount(subj) {
+    return Object.values(SYLLABUS_DATA[subj]).reduce((acc, cat) => acc + cat.length, 0);
+  }
+
+  const getHeatColor = (hours, isDDay) => {
+    if (isDDay) return 'bg-purple-600 ring-2 ring-purple-400/50 ring-offset-2 ring-offset-black';
+    if (!hours || hours === 0) return 'bg-white/5';
+    if (hours >= 12) return 'bg-purple-400';
+    if (hours >= 10) return 'bg-purple-500';
+    if (hours >= 8) return 'bg-purple-600';
+    if (hours >= 7) return 'bg-purple-700';
+    if (hours >= 4) return 'bg-purple-800';
+    if (hours >= 2) return 'bg-purple-900';
+    return 'bg-purple-950';
+  };
+
+  const adjustHours = (val) => {
+    const current = studyHours[todayKey] || 0;
+    const next = Math.max(0, current + val);
+    setStudyHours({ ...studyHours, [todayKey]: next });
+  };
+
+  const toggleCategory = (cat, isModal = false) => {
+    const setter = isModal ? setModalExpandedCategories : setExpandedCategories;
+    setter(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const addTask = (chapter, subject, date) => {
+    const currentTasks = tasks[date] || [];
+    if (!currentTasks.some(t => t.name === chapter)) {
+      setTasks({ ...tasks, [date]: [...currentTasks, { name: chapter, subject }] });
+    }
+  };
+
+  const selectWakeUpTime = (h, m) => {
+    const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    setWakeUpTimes({ ...wakeUpTimes, [todayKey]: timeStr });
+    setSelectedHour(h);
+    setSelectedMinute(m);
+  };
+
+  useEffect(() => {
+    if (wakeUpTimes[todayKey]) {
+      const [h, m] = wakeUpTimes[todayKey].split(':').map(Number);
+      setSelectedHour(h);
+      setSelectedMinute(m);
+    }
+  }, [todayKey, wakeUpTimes]);
+
+  const MasteryDots = ({ chapter }) => (
+    <div className="flex gap-1 mt-2">
+      {['L', 'S', 'Q', 'T'].map(type => {
+        const id = `${chapter}-${type}`;
+        const active = progress[id];
+        return (
+          <motion.button
+            key={type}
+            whileTap={{ scale: 0.9 }}
+            onClick={(e) => { e.stopPropagation(); setProgress({ ...progress, [id]: !active }); }}
+            className={`w-8 h-8 rounded-lg text-[9px] font-black border-2 transition-all ${
+              active ? 'bg-purple-600 border-purple-400/50 text-white shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'border-purple-500/15 text-purple-200/40 hover:border-purple-500/30'
+            }`}
+          >
+            {type}
+          </motion.button>
+        );
+      })}
+    </div>
+  );
+
+  const SubjectSlider = ({ current, onChange }) => (
+    <div className="flex bg-gradient-to-br from-purple-950/20 to-black p-1 rounded-2xl mb-6 border-2 border-purple-500/25 relative">
+      {Object.keys(SYLLABUS_DATA).map(subj => (
+        <button 
+          key={subj} 
+          onClick={() => onChange(subj)} 
+          className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative z-10 ${current === subj ? 'text-white' : 'text-purple-200/40 hover:text-white'}`}
+        >
+          {subj}
+          {current === subj && (
+            <motion.div 
+              layoutId="activeSubj"
+              className="absolute inset-0 bg-gradient-to-r from-purple-600 to-purple-500 rounded-xl -z-10 shadow-lg"
+              transition={springTransition}
+            />
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderWakeUpChart = () => {
+    const sortedDates = Object.keys(wakeUpTimes).sort();
+    if (sortedDates.length < 2) return (
+      <div className="h-32 flex items-center justify-center text-[10px] font-black text-purple-200/20 uppercase tracking-widest border-2 border-dashed border-purple-500/10 rounded-3xl bg-purple-900/5">
+        Need 2+ entries to graph
+      </div>
+    );
+
+    const timeToMinutes = (time) => {
+      const [h, m] = time.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const data = sortedDates.map(d => timeToMinutes(wakeUpTimes[d]));
+    const min = Math.min(...data) - 30;
+    const max = Math.max(...data) + 30;
+    const range = max - min;
+
+    return (
+      <div className="h-32 w-full flex items-end gap-1 px-2">
+        {data.map((minutes, i) => (
+          <motion.div 
+            key={i} 
+            initial={{ height: 0 }}
+            animate={{ height: `${((minutes - min) / range) * 100}%` }}
+            className="flex-1 flex flex-col items-center group relative bg-gradient-to-t from-purple-800/20 to-purple-500/40 rounded-t-sm hover:from-purple-500 hover:to-purple-400 transition-all"
+          >
+            <div className="absolute -top-6 scale-0 group-hover:scale-100 transition-transform bg-purple-600 text-[8px] font-black px-1 rounded shadow-lg">
+              {sortedDates[i].split('-').slice(1).join('/')}
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderDashboard = () => (
+    <motion.div 
+      variants={fadeInVariants} initial="initial" animate="animate" exit="exit"
+      className="max-w-xl mx-auto p-6 md:p-8 pb-32"
+    >
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-3xl font-black text-white leading-none tracking-tighter">JEE ADVANCED <span className="text-purple-500">2026</span></h1>
+        <motion.button 
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowMasteryStats(true)}
+          className="w-14 h-14 rounded-2xl border-2 border-purple-500/50 bg-gradient-to-br from-purple-500/20 to-black flex flex-col items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+        >
+           <span className="text-white font-black text-sm leading-none">{stats.overall}%</span>
+           <span className="text-[7px] font-black text-purple-200 uppercase mt-0.5 tracking-tighter">STATS</span>
+        </motion.button>
+      </div>
+
+      <div className="mb-6 p-6 bg-gradient-to-br from-purple-900/60 to-[#050208] rounded-[2.5rem] border-2 border-purple-500/50 shadow-xl shadow-purple-900/10">
+        <div className="flex justify-around items-center">
+          {[{l: 'WEEKS', v: timeLeft.weeks}, {l: 'DAYS', v: timeLeft.days}, {l: 'HOURS', v: timeLeft.hours}].map(i => (
+            <div key={i.l} className="text-center">
+              <div className="text-2xl font-black text-white tabular-nums leading-none">{i.v.toLocaleString()}</div>
+              <div className="text-[8px] font-black text-purple-300 tracking-widest mt-1 opacity-70">{i.l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-6 bg-gradient-to-br from-purple-900/20 to-black border-2 border-purple-500/40 rounded-[2.5rem] p-6 shadow-lg">
+        <div className="flex justify-between items-center mb-6 text-[10px] font-black text-purple-300 uppercase tracking-widest">
+           <h3 className="opacity-60">Daily Focus</h3>
+           <div className="flex items-center gap-3">
+             <button onClick={() => setDailyTarget(t => Math.max(1, t-1))} className="opacity-30 hover:opacity-100 transition-opacity">－</button>
+             <span className="text-purple-200">TARGET: {dailyTarget}H</span>
+             <button onClick={() => setDailyTarget(t => t+1)} className="opacity-30 hover:opacity-100 transition-opacity">＋</button>
+           </div>
+        </div>
+        <div className="flex items-center justify-between mb-5">
+          <span className="text-4xl font-black text-white tabular-nums">{(studyHours[todayKey] || 0).toFixed(1)}<span className="text-lg text-purple-200/30 ml-1 font-bold">hrs</span></span>
+          <div className="flex gap-2">
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => adjustHours(-0.5)} className="w-12 h-12 rounded-2xl bg-purple-950/40 border-2 border-purple-500/10 flex items-center justify-center text-purple-300/60 font-black hover:border-purple-500/30 transition-colors">-0.5</motion.button>
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => adjustHours(0.5)} className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-purple-700 border-2 border-purple-400/50 flex items-center justify-center text-white font-black shadow-lg shadow-purple-900/40">+0.5</motion.button>
+          </div>
+        </div>
+        <div className="h-2 w-full bg-purple-950/60 rounded-full overflow-hidden border border-purple-500/15">
+          <motion.div 
+            className="h-full bg-gradient-to-r from-purple-600 to-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.6)]" 
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, ((studyHours[todayKey] || 0) / dailyTarget) * 100)}%` }}
+            transition={{ duration: 1, ease: "circOut" }}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={() => setView('tracker')} className="p-6 rounded-[2rem] bg-gradient-to-br from-purple-950/30 to-black border-2 border-purple-500/30 text-purple-100 font-black uppercase text-[10px] tracking-widest hover:border-purple-500/60 transition-colors shadow-lg">Tracker</motion.button>
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={() => setView('calendar')} className="p-6 rounded-[2rem] bg-gradient-to-br from-purple-950/30 to-black border-2 border-purple-500/30 text-purple-100 font-black uppercase text-[10px] tracking-widest hover:border-purple-500/60 transition-colors shadow-lg">Calendar</motion.button>
+      </div>
+
+      <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} onClick={() => setView('wakeup')} className="w-full mb-8 p-6 rounded-[2rem] bg-gradient-to-br from-purple-950/30 to-black border-2 border-purple-500/30 text-purple-100 font-black uppercase text-[10px] tracking-widest hover:border-purple-500/60 transition-colors shadow-lg">Wake Up Tracker</motion.button>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-purple-200/40 px-2">
+          <span>Daily Tasks</span>
+          <button onClick={() => setSelectedDate(todayKey)} className="text-purple-400 hover:text-purple-300 transition-colors">＋ ADD NEW</button>
+        </div>
+        <AnimatePresence mode="popLayout">
+          {(tasks[todayKey] || []).length === 0 ? (
+            <motion.div 
+              key="empty" variants={fadeInVariants} initial="initial" animate="animate" exit="exit"
+              className="py-12 text-center border-2 border-dashed border-purple-500/15 rounded-[2.5rem] text-[10px] font-bold text-purple-200/20 uppercase tracking-[0.2em] bg-purple-900/[0.02]"
+            >
+               Planning leads to perfection
+            </motion.div>
+          ) : (
+            tasks[todayKey].map(chap => (
+              <motion.div 
+                layout key={chap.name} variants={fadeInVariants} initial="initial" animate="animate" exit="exit"
+                className="bg-gradient-to-br from-purple-950/15 to-[#050208] p-5 rounded-[2rem] border-2 border-purple-500/30 shadow-md"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <p className="text-[8px] font-black text-purple-400/60 uppercase tracking-widest">{chap.subject}</p>
+                    <p className="text-sm font-bold text-white tracking-tight">{chap.name}</p>
+                  </div>
+                  <button onClick={() => {
+                    setTasks({ ...tasks, [todayKey]: tasks[todayKey].filter(t => t.name !== chap.name) });
+                  }} className="text-purple-300/40 hover:text-red-500 transition-colors px-1">✕</button>
+                </div>
+                <MasteryDots chapter={chap.name} />
+              </motion.div>
+            ))
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+
+  const renderWakeUpTracker = () => (
+    <motion.div 
+      variants={fadeInVariants} initial="initial" animate="animate" exit="exit"
+      className="max-w-xl mx-auto p-6 md:p-8 pb-32"
+    >
+      <button onClick={() => setView('dashboard')} className="mb-6 text-purple-400/60 font-black uppercase text-[10px] tracking-widest hover:text-purple-400 transition-colors">← Back to Dashboard</button>
+      <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-8 px-1">Wake Up Log</h2>
+      
+      <div className="bg-gradient-to-br from-purple-900/10 to-black border-2 border-purple-500/40 rounded-[2.5rem] p-8 mb-8 shadow-xl">
+        <div className="flex justify-between items-center mb-8 px-1">
+           <h3 className="text-[10px] font-black text-purple-300 uppercase tracking-widest opacity-60">Log Entry</h3>
+           <span className="text-[10px] font-black text-purple-200/40 tabular-nums uppercase">{todayKey}</span>
+        </div>
+        
+        <div className="space-y-8">
+          <div className="flex flex-col gap-4">
+            <span className="text-[9px] font-black text-purple-400/60 uppercase tracking-[0.2em] px-1">HOUR (AM)</span>
+            <div className="flex gap-2">
+              {[4, 5, 6, 7, 8].map(h => (
+                <button 
+                  key={h} 
+                  onClick={() => selectWakeUpTime(h, selectedMinute || 0)}
+                  className={`flex-1 py-5 rounded-2xl font-black text-xl transition-all border-2 relative overflow-hidden ${selectedHour === h ? 'text-white border-purple-400' : 'bg-purple-950/20 border-purple-500/10 text-purple-200/30 hover:border-purple-500/30'}`}
+                >
+                  <span className="relative z-10">{h}</span>
+                  {selectedHour === h && (
+                    <motion.div layoutId="hActive" className="absolute inset-0 bg-gradient-to-br from-purple-600 to-purple-700 shadow-lg" transition={springTransition} />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <span className="text-[9px] font-black text-purple-400/60 uppercase tracking-[0.2em] px-1">MINUTES</span>
+            <div className="flex gap-2">
+              {[0, 15, 30, 45].map(m => (
+                <button 
+                  key={m} 
+                  onClick={() => selectWakeUpTime(selectedHour || 6, m)}
+                  className={`flex-1 py-5 rounded-2xl font-black text-xl transition-all border-2 relative overflow-hidden ${selectedMinute === m ? 'text-white border-purple-400' : 'bg-purple-950/20 border-purple-500/10 text-purple-200/30 hover:border-purple-500/30'}`}
+                >
+                  <span className="relative z-10">{m.toString().padStart(2, '0')}</span>
+                  {selectedMinute === m && (
+                    <motion.div layoutId="mActive" className="absolute inset-0 bg-gradient-to-br from-purple-600 to-purple-700 shadow-lg" transition={springTransition} />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <motion.div animate={{ opacity: wakeUpTimes[todayKey] ? 1 : 0.3 }} className="text-center pt-2">
+            <span className="text-xs font-black text-purple-300 uppercase tracking-[0.3em] bg-purple-500/10 py-2 px-6 rounded-full border border-purple-500/20">
+               {wakeUpTimes[todayKey] ? `${wakeUpTimes[todayKey]} AM` : 'NOT LOGGED'}
+            </span>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="bg-gradient-to-br from-purple-900/5 to-[#050208] border-2 border-purple-500/30 rounded-[2.5rem] p-8 shadow-inner">
+        <h3 className="text-[10px] font-black text-purple-300 uppercase tracking-widest mb-8 opacity-60">Insight Graph</h3>
+        {renderWakeUpChart()}
+        <div className="mt-8 grid grid-cols-2 gap-4">
+          <div className="p-5 bg-gradient-to-br from-purple-950/30 to-black rounded-3xl border-2 border-purple-500/10">
+            <p className="text-[8px] font-black text-purple-400/50 uppercase tracking-widest">Avg Wakeup</p>
+            <p className="text-2xl font-black text-white mt-1 tabular-nums">
+              {Object.values(wakeUpTimes).length > 0 
+                ? (() => {
+                    const totalMin = Object.values(wakeUpTimes).reduce((acc, t) => {
+                      const [h,m] = t.split(':').map(Number);
+                      return acc + h*60 + m;
+                    }, 0);
+                    const avg = totalMin / Object.values(wakeUpTimes).length;
+                    const h = Math.floor(avg/60).toString().padStart(2, '0');
+                    const m = Math.floor(avg%60).toString().padStart(2, '0');
+                    return `${h}:${m}`;
+                  })()
+                : "--:--"
+              }
+            </p>
+          </div>
+          <div className="p-5 bg-gradient-to-br from-purple-950/30 to-black rounded-3xl border-2 border-purple-500/10">
+            <p className="text-[8px] font-black text-purple-400/50 uppercase tracking-widest">Consistency</p>
+            <p className="text-2xl font-black text-white mt-1 tabular-nums">{Object.keys(wakeUpTimes).length}<span className="text-xs text-purple-500/40 ml-1">days</span></p>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  const renderCalendar = () => (
+    <motion.div 
+      variants={fadeInVariants} initial="initial" animate="animate" exit="exit"
+      className="max-w-xl mx-auto p-6 md:p-8 pb-32"
+    >
+      <button onClick={() => setView('dashboard')} className="mb-6 text-purple-400/60 font-black uppercase text-[10px] tracking-widest hover:text-purple-400 transition-colors">← Back</button>
+      <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-8">Calendar</h2>
+      
+      <div className="space-y-8">
+        {[
+          { name: 'March', days: 31, offset: 0, year: '2026', mIdx: 3 },
+          { name: 'April', days: 30, offset: 3, year: '2026', mIdx: 4 },
+          { name: 'May', days: 31, offset: 5, year: '2026', mIdx: 5 }
+        ].map((m) => (
+          <div key={m.name} className="p-7 bg-gradient-to-br from-purple-900/10 to-black border-2 border-purple-500/30 rounded-[2.5rem] shadow-xl">
+            <h3 className="text-[11px] font-black text-purple-200 uppercase tracking-[0.5em] mb-8 flex justify-between px-1">
+              <span>{m.name}</span>
+              <span className="opacity-30">{m.year}</span>
+            </h3>
+            <div className="grid grid-cols-7 gap-3">
+              {['M','T','W','T','F','S','S'].map((d, i) => <div key={i} className="text-center text-[9px] font-black text-purple-500/40 uppercase">{d}</div>)}
+              {Array.from({ length: m.offset }).map((_, i) => <div key={`off-${i}`} />)}
+              {Array.from({ length: m.days }).map((_, i) => {
+                const dayNum = i + 1;
+                const dateStr = `2026-0${m.mIdx}-${dayNum.toString().padStart(2, '0')}`;
+                const hrs = studyHours[dateStr] || 0;
+                const isDDay = m.name === 'May' && dayNum === 17;
+                const isDimmed = ((m.name === 'March' && dayNum <= 16) || (m.name === 'May' && dayNum > 17)) && !isDDay;
+
+                return (
+                  <motion.button
+                    key={dayNum}
+                    whileHover={!isDimmed ? { scale: 1.15, zIndex: 10 } : {}}
+                    whileTap={!isDimmed ? { scale: 0.9 } : {}}
+                    onClick={() => !isDimmed && setSelectedDate(dateStr)}
+                    className={`aspect-square rounded-xl flex items-center justify-center text-[11px] font-black transition-all shadow-inner ${getHeatColor(hrs, isDDay)} ${isDimmed ? 'opacity-5 grayscale pointer-events-none' : ''} ${hrs > 0 || isDDay ? 'text-white' : 'text-purple-300/10 hover:text-purple-300/40'}`}
+                  >
+                    {dayNum}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+
+  const renderTracker = () => (
+    <motion.div 
+      variants={fadeInVariants} initial="initial" animate="animate" exit="exit"
+      className="max-w-2xl mx-auto p-6 md:p-8 pb-32"
+    >
+      <button onClick={() => setView('dashboard')} className="mb-6 text-purple-400/60 font-black uppercase text-[10px] tracking-widest hover:text-purple-400 transition-colors">← Back</button>
+      <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-8">Academic Tracker</h2>
+      <SubjectSlider current={activeSubject} onChange={setActiveSubject} />
+      <div className="space-y-4">
+        {Object.entries(SYLLABUS_DATA[activeSubject]).map(([category, chapters]) => {
+          const isExpanded = expandedCategories[category];
+          return (
+            <div key={category} className={`bg-gradient-to-br transition-all duration-500 rounded-[2rem] border-2 ${isExpanded ? 'border-purple-500/50 from-purple-900/15 to-black shadow-lg shadow-purple-900/5' : 'border-purple-500/20 from-purple-950/5 to-black'}`}>
+              <button onClick={() => toggleCategory(category)} className="w-full p-6 flex items-center justify-between text-left">
+                <div>
+                  <h3 className={`text-[11px] font-black uppercase tracking-widest transition-colors ${isExpanded ? 'text-purple-300' : 'text-purple-100/70'}`}>{category}</h3>
+                  <p className="text-[9px] font-black text-purple-500/40 mt-1 uppercase tracking-tighter">{chapters.length} Units Found</p>
+                </div>
+                <motion.span 
+                  animate={{ rotate: isExpanded ? 180 : 0 }} 
+                  className={`text-[10px] ${isExpanded ? 'text-purple-400' : 'text-purple-500/30'}`}
+                >
+                   ▼
+                </motion.span>
+              </button>
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }} 
+                    animate={{ height: "auto", opacity: 1 }} 
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="p-5 pt-0 space-y-3">
+                      {chapters.map(chap => (
+                        <div key={chap} className="p-5 bg-gradient-to-br from-purple-950/30 to-black rounded-3xl flex flex-col md:flex-row md:items-center justify-between border-2 border-purple-500/10 hover:border-purple-500/30 transition-colors">
+                          <span className="text-sm font-bold text-white/80 tracking-tight">{chap}</span>
+                          <MasteryDots chapter={chap} />
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#050208] text-white selection:bg-purple-500/30 overflow-x-hidden">
+      <AnimatePresence mode="wait">
+        {view === 'dashboard' && renderDashboard()}
+        {view === 'wakeup' && renderWakeUpTracker()}
+        {view === 'tracker' && renderTracker()}
+        {view === 'calendar' && renderCalendar()}
+      </AnimatePresence>
+
+      {/* Mastery Stats Modal */}
+      <AnimatePresence>
+        {showMasteryStats && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[60] flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-lg bg-gradient-to-br from-[#0a0510] to-[#050208] border-2 border-purple-500/50 rounded-[3rem] p-8 max-h-[85vh] overflow-y-auto scrollbar-hide shadow-2xl"
+            >
+               <div className="flex justify-between items-center mb-10 px-1">
+                  <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Academic Mastery</h2>
+                  <button onClick={() => setShowMasteryStats(false)} className="text-purple-300/40 hover:text-white transition-colors text-xl">✕</button>
+               </div>
+               {['Physics', 'Chemistry', 'Mathematics'].map(subj => (
+                 <div key={subj} className="mb-12">
+                   <div className="flex justify-between items-end mb-4 px-1">
+                     <h3 className="text-xs font-black text-purple-400 uppercase tracking-widest">{subj}</h3>
+                     <span className="text-[11px] font-black text-white tabular-nums">{Math.round((stats[subj].earned / stats[subj].total) * 100)}%</span>
+                   </div>
+                   <div className="space-y-6 px-1">
+                     {['L','S','Q','T'].map(type => {
+                       const total = chaptersCount(subj);
+                       const earned = stats[subj].types[type];
+                       const pct = (earned / total) * 100;
+                       return (
+                         <div key={type}>
+                           <div className="flex justify-between text-[8px] font-black uppercase text-purple-300/40 mb-2 tracking-[0.2em]">
+                             <span>{MASTERY_TYPES[type]}</span>
+                             <span className="tabular-nums">{earned} / {total}</span>
+                           </div>
+                           <div className="h-2 w-full bg-purple-900/30 rounded-full overflow-hidden border border-purple-500/10">
+                             <motion.div 
+                               initial={{ width: 0 }} 
+                               animate={{ width: `${pct}%` }} 
+                               className="h-full bg-gradient-to-r from-purple-600 to-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.3)]" 
+                             />
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 </div>
+               ))}
+               <button onClick={() => setShowMasteryStats(false)} className="w-full py-5 bg-gradient-to-br from-purple-600 to-purple-700 border-2 border-purple-400/50 rounded-3xl text-white font-black uppercase text-[10px] tracking-[0.3em] shadow-lg shadow-purple-900/40">Close Overview</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Task Selection Modal */}
+      <AnimatePresence>
+        {selectedDate && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-50 flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              className="bg-gradient-to-br from-[#0a0510] to-black border-2 border-purple-500/50 w-full max-w-lg rounded-[3rem] p-7 max-h-[85vh] flex flex-col shadow-2xl"
+            >
+              <h2 className="text-white font-black uppercase text-center mb-8 tracking-[0.3em] text-xs">Update Schedule: {selectedDate}</h2>
+              <SubjectSlider current={modalSubject} onChange={setModalSubject} />
+              <div className="relative mb-6">
+                <input 
+                  type="text" placeholder="Filter syllabus..."
+                  className="w-full bg-purple-900/10 border-2 border-purple-500/30 rounded-[1.5rem] p-5 text-white focus:outline-none focus:border-purple-400/50 transition-all placeholder:text-purple-300/20 text-sm font-bold shadow-inner"
+                  value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                {Object.entries(SYLLABUS_DATA[modalSubject]).map(([category, chapters]) => {
+                  const filtered = chapters.filter(c => c.toLowerCase().includes(searchTerm.toLowerCase()));
+                  if (filtered.length === 0) return null;
+                  const isExpanded = modalExpandedCategories[category] || searchTerm.length > 0;
+                  return (
+                    <div key={category} className={`bg-gradient-to-br transition-all rounded-[2rem] border-2 ${isExpanded ? 'border-purple-500/40 from-purple-950/10 to-black' : 'border-purple-500/15 from-purple-900/[0.03] to-black'}`}>
+                      <button onClick={() => toggleCategory(category, true)} className="w-full p-5 flex items-center justify-between text-left">
+                        <h3 className="text-[10px] font-black text-purple-200/80 uppercase tracking-widest">{category}</h3>
+                        <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} className="text-purple-500 text-[10px]">▼</motion.span>
+                      </button>
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} 
+                            className="overflow-hidden"
+                          >
+                            <div className="p-4 pt-0 grid gap-2">
+                              {filtered.map(chap => {
+                                const isAdded = (tasks[selectedDate] || []).some(t => t.name === chap);
+                                return (
+                                  <motion.button 
+                                    key={chap} whileTap={{ scale: 0.98 }}
+                                    onClick={() => addTask(chap, modalSubject, selectedDate)}
+                                    className={`p-5 rounded-2xl text-left border-2 transition-all ${isAdded ? 'bg-gradient-to-br from-purple-600/40 to-purple-800/20 border-purple-400/50' : 'bg-purple-900/10 border-purple-500/10 hover:border-purple-500/30'}`}
+                                  >
+                                    <p className="text-sm font-bold text-white tracking-tight">{chap}</p>
+                                  </motion.button>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
+              </div>
+              <button onClick={() => setSelectedDate(null)} className="mt-8 w-full py-6 bg-gradient-to-br from-purple-600 to-purple-700 border-2 border-purple-400/50 rounded-[2rem] text-white font-black uppercase text-[10px] tracking-[0.3em] shadow-lg shadow-purple-900/40">Confirm Tasks</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
