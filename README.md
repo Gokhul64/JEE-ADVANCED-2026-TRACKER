@@ -1,22 +1,59 @@
-JEE Advanced 2026 Tracker
+JEE Advanced 2026 Strategy Dashboard
 
-A minimal, high-focus study tracker designed specifically for JEE Advanced preparation.
-Track syllabus mastery, study hours, tasks, wake-up consistency, and progress toward the exam in one clean interface.
+Welcome to your ultimate JEE 2026 companion. This is a premium, dark-themed dashboard designed to help you stay disciplined, track your syllabus progress, and crush your daily study targets.
 
-Features
+📱 How to Use This App on Your Phone
 
-Complete JEE Advanced syllabus structure
+You don't need to download anything from the App Store. You can "install" this dashboard directly from your browser to your home screen:
 
-Organized by Subject → Category → Chapter
+For iPhone (Safari)
 
-Track mastery using four stages
+Open the app link in Safari.
 
-A wake up log
+Tap the Share icon (the square with an upward arrow at the bottom).
 
-Interactive calender design
+Scroll down and select "Add to Home Screen."
 
-setting up tasks for each day from the syllabus list 
+Tap "Add" in the top right corner.
 
-detailed analysis 
+For Android (Chrome)
 
-time tracker 
+Open the app link in Chrome.
+
+Tap the three dots (⋮) in the top right corner.
+
+Tap "Install app" or "Add to Home screen."
+
+🛠️ Key Features
+
+Live Countdown: See exactly how much time is left until the JEE Advanced 2026 exam.
+
+Syllabus Mastery: Track Physics, Chemistry, and Maths topics across four stages:
+
+L (Learn/Lecture)
+
+S (Shortnotes)
+
+Q (Question Bank)
+
+T (Test/Revision)
+
+Study Hour Tracker: Set a daily goal and log your hours with a visual progress bar.
+
+Missions List: Manage your daily "To-Do" list to stay on top of your tasks.
+
+Wake Log: Keep yourself accountable by logging your wake-up times every morning.
+
+🔒 Your Data & Privacy
+
+Privacy First: This app does not use a central database. All your progress, study hours, and tasks are saved locally on your own device.
+
+Device Specific: Because data is saved locally, your phone and laptop will have different "save files."
+
+Pro Tip: Do not clear your browser cache/history for this site, or your progress data may be reset!
+
+🎓 About
+
+Created for JEE 2026 aspirants who want a clean, distraction-free environment to track their journey to the IITs.
+
+Good luck with your prep!
